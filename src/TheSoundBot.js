@@ -292,11 +292,23 @@ tsu [help | [join | start] | skip | stop |\n    play <playlist> | shuffle <playl
     return amIAlone;
   }
 
+  _notInAVoiceChannel() {
+    let notInAVoiceChannel;
+
+    if (this.guild.voice && this.guild.voice.connections) {
+      notInAVoiceChannel = this.guild.voice.connections.size <= 0;
+    } else {
+      notInAVoiceChannel = true;
+    }
+
+    return notInAVoiceChannel;
+  }
+
   _tryJoinVoiceChannel(newState) {
     const hasJoinedAutoJoinChannel = 
     newState.channel !== null && 
     newState.channel.name.includes(this.autoJoinChannelName);
-    const notInAVoiceChannel = this.guild.voice?.connections?.size <= 0;
+    const notInAVoiceChannel = this._notInAVoiceChannel();
     const isNotBot = !newState.member.user.bot;
 
     if (hasJoinedAutoJoinChannel && notInAVoiceChannel && isNotBot) {
