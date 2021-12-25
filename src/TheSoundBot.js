@@ -13,7 +13,7 @@ class TheSoundBot {
     this.youtubeChannel = "https://www.youtube.com/c/thesoundunique";
     this.prefix = "tsu";
     this.guild = guild;
-    this.autoJoinChannelName = "TSU";
+    this.autoJoinChannelNames = ["TSU", "YouTube"];
     this.queue = new Map();
     this.emptyVideo = "https://www.youtube.com/watch?v=kvO_nHnvPtQ";
     this.playlists = {
@@ -77,7 +77,7 @@ class TheSoundBot {
     ytdl.getBasicInfo(song).then(async info => {
       const embed = new Discord.MessageEmbed()
       .setColor('#0099ff')
-      .setTitle(info.videoDetails.title)
+      .setTitle(`🎵 ${info.videoDetails.title}`)
       .setURL(song);
     
       if (this.songTitleMessage) {
@@ -233,7 +233,7 @@ tsu [help | [join | start] | skip | stop |\n    play <playlist> | shuffle <playl
       { name: 'play', value: 'Riproduce la playlist in ordine.', inline: true },
       { name: 'shuffle', value: 'Riproduce i brani della playlist in modo casuale.', inline: true },
       { name: 'Playlists:', value: 'Trap\nEDM\nNocopyright\n' },
-      { name : 'Autojoin:', value: `Il bot viene aggiunto automaticamente al canale vocale "${this.autoJoinChannelName}" appena un utente entra.`}
+      { name : 'Autojoin:', value: `Il bot viene aggiunto automaticamente al canale vocale "${this.autoJoinChannelNames[0]}" o "${this.autoJoinChannelNames[1]}" appena un utente entra.`}
     )
     .setFooter('Author: Barretta', 'https://i.imgur.com/4Ff284Z.jpg');
 
@@ -304,14 +304,24 @@ tsu [help | [join | start] | skip | stop |\n    play <playlist> | shuffle <playl
     return notInAVoiceChannel;
   }
 
+  _isAutoJoinChannelName(name) {
+    const matchAutoJoinChannels = new RegExp(this.autoJoinChannelNames.join("|"), 'gi');
+    const isAutoJoinChannelName = name.match(matchAutoJoinChannels);
+
+    return isAutoJoinChannelName;
+  }
+
   _tryJoinVoiceChannel(newState) {
-    const hasJoinedAutoJoinChannel = 
-    newState.channel !== null && 
-    newState.channel.name.includes(this.autoJoinChannelName);
+    let isAutoJoinChannelName;
+
+    if (newState.channel !== null) {
+      isAutoJoinChannelName = this._isAutoJoinChannelName(newState.channel.name);
+    }
+
     const notInAVoiceChannel = this._notInAVoiceChannel();
     const isNotBot = !newState.member.user.bot;
 
-    if (hasJoinedAutoJoinChannel && notInAVoiceChannel && isNotBot) {
+    if (isAutoJoinChannelName && notInAVoiceChannel && isNotBot) {
       this._connectToVoice(newState, true);
     }
   }
@@ -319,7 +329,7 @@ tsu [help | [join | start] | skip | stop |\n    play <playlist> | shuffle <playl
   _tryLeaveVoiceChannel(oldState) {
     const shouldLeave = this._shouldLeaveChannel(oldState);
 
-    if (shouldLeave) {
+    if (shouldLeave && this.serverQueue) {
       this.serverQueue.voiceChannel.leave();
     }
   }
