@@ -13,8 +13,8 @@ class TheSoundBot {
     this.youtubeChannel = "https://www.youtube.com/c/thesoundunique";
     this.prefix = "tsu";
     this.guild = guild;
+    this.defaultTextChannelName = "comandi";
     this.autoJoinChannelNames = ["TSU", "YouTube"];
-    this.queue = new Map();
     this.emptyVideo = "https://www.youtube.com/watch?v=kvO_nHnvPtQ";
     this.playlists = {
       nocopyright: "https://www.youtube.com/playlist?list=PLxdqsLxANwLlCOtwD7n78uuRhv3nqwL_E",
@@ -73,19 +73,18 @@ class TheSoundBot {
     this.dispatcher.emit("finish");
   }
 
-  _sendSongTitle(song) {
+  _sendSongTitle(song, isCompulsory) {
     ytdl.getBasicInfo(song).then(async info => {
       const embed = new Discord.MessageEmbed()
       .setColor('#0099ff')
       .setTitle(`🎵 ${info.videoDetails.title}`)
       .setURL(song);
     
-      if (this.songTitleMessage) {
+      if (this.songTitleMessage && !isCompulsory) {
         this.songTitleMessage.edit(embed);
       } else {
         this.songTitleMessage = await this.serverQueue.textChannel.send(embed);
       }
-
     });
   }
 
@@ -120,7 +119,7 @@ class TheSoundBot {
 
     if (!currentSong) {
       this.serverQueue.voiceChannel.leave();
-      this.queue.delete(guild.id);
+      this.serverQueue = null;
       return;
     }
 
@@ -170,20 +169,35 @@ class TheSoundBot {
     return array;
   }
 
+  _getTextChannel(isAutoJoin, msg) {
+    let textChannel;
+
+    if (isAutoJoin) {
+      const defaultChannel = this.guild.channels.cache.find(
+        channel => channel.name.includes(this.defaultTextChannelName) 
+      )
+      
+      if (defaultChannel) textChannel = defaultChannel;
+    } else {
+      textChannel = msg.channel;
+    }
+
+    return textChannel;
+  }
+
   _startPlaylist(msg, playlistURL, shuffle, isAutoJoin) {
     ytpl(playlistURL).then(
       (playlist) => {
         console.log("Playing playlist...");
-        const queueConstruct = {
-          textChannel: isAutoJoin ? "" : msg.channel,
+        this.serverQueue = {
+          textChannel: this._getTextChannel(isAutoJoin, msg),
           voiceChannel: msg.member.voice.channel,
           connection: this.connection,
           songs: [],
+          currentSong: null,
           volume: 5,
           playing: true,
         };
-        
-        this.queue.set(msg.guild.id, queueConstruct);
 
         let playlistItems = playlist.items;
 
@@ -192,10 +206,9 @@ class TheSoundBot {
         }
         
         for (let item of playlistItems) {
-          queueConstruct.songs.push(item.shortUrl);
+          this.serverQueue.songs.push(item.shortUrl);
         }
 
-        this.serverQueue = this.queue.get(msg.guild.id);
         this._play(msg.guild);
       }
     );
@@ -211,12 +224,22 @@ class TheSoundBot {
     }
   }
 
+  _showCurrentlyPlayingSong() {
+    const shouldSendSongTitle = this.serverQueue && 
+                                this.serverQueue.songs.length &&
+                                this.serverQueue.textChannel;
+
+    if (shouldSendSongTitle) {
+      this._sendSongTitle(this.serverQueue.songs[0], true);
+    }
+  }
+
   _parseCommand(msg) {
     let content = msg.content.toLowerCase();
     const usage = `
     \`\`\`
 Utilizzo:
-tsu [help | [join | start] | skip | stop |\n    play <playlist> | shuffle <playlist>] 
+tsu [help | what | [join | start] | skip | stop |\n    play <playlist> | shuffle <playlist>] 
 \`\`\`
     `
     const embed = new Discord.MessageEmbed()
@@ -227,6 +250,7 @@ tsu [help | [join | start] | skip | stop |\n    play <playlist> | shuffle <playl
     .setThumbnail('https://i.imgur.com/LyFIUIW.png')
     .addFields(
       { name: 'help', value: 'Mostra questo messaggio.', inline: true },
+      { name: 'what', value: 'Mostra il brano in riproduzione.', inline: true },
       { name: 'join | start', value: 'Unisce il bot alla chat vocale.', inline: true },
       { name: 'skip', value: 'Skippa la riproduzione del brano.', inline: true },
       { name: 'stop', value: 'Ferma il bot.', inline: true },
@@ -235,7 +259,7 @@ tsu [help | [join | start] | skip | stop |\n    play <playlist> | shuffle <playl
       { name: 'Playlists:', value: 'Trap\nEDM\nNocopyright\n' },
       { name : 'Autojoin:', value: `Il bot viene aggiunto automaticamente al canale vocale "${this.autoJoinChannelNames[0]}" o "${this.autoJoinChannelNames[1]}" appena un utente entra.`}
     )
-    .setFooter('Author: Barretta', 'https://i.imgur.com/4Ff284Z.jpg');
+    .setFooter('Author: \\ (Barretta)', 'https://i.imgur.com/4Ff284Z.jpg');
 
     const splitCommand = content.split(" ");
 
@@ -256,6 +280,9 @@ tsu [help | [join | start] | skip | stop |\n    play <playlist> | shuffle <playl
         break;
         case "shuffle": 
           this._interceptPlayCommand(splitCommand, msg, true);
+        break;
+        case "what":
+          this._showCurrentlyPlayingSong();
         break;
         case "help":
           msg.reply(embed);
